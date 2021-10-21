@@ -1,0 +1,278 @@
+
+import warnings
+warnings.filterwarnings("ignore")
+
+import os
+import datetime
+
+import numpy as np
+import pandas as pd
+from pandas.api.types import CategoricalDtype
+import seaborn as sns
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+from dateutil.parser import parse
+import streamlit as st
+import joblib 
+
+from sklearn.model_selection import train_test_split, learning_curve
+from sklearn import metrics
+from sklearn.preprocessing import StandardScaler, OneHotEncoder, MinMaxScaler, LabelEncoder
+
+import tensorflow as tf                                                                   # importing tensorflow library
+from tensorflow import keras 
+
+from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
+from statsmodels.tsa.statespace.sarimax import SARIMAX
+from statsmodels.tsa.statespace.varmax import VARMAX, VARMAXResults
+import statsmodels.api as sm  ## sm.stats.acorr_ljungbox check autocorrection in series.   #sm.tsa.ARMA -- model
+
+st.set_page_config(layout="wide")
+st.write("""
+    # Supply Chain Target Prediction
+    The app predict Target order based on Brazilian logistic dataset
+    ## **CDS Team Group-12** 	""")
+
+#st.sidebar.header("User input parameter")
+st.markdown(
+    '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.5.3/dist/css/bootstrap.min.css" integrity="sha384-TX8t27EcRE3e/ihU7zmQxVncDAy5uIKz4rEkgIXeMed4M0jlfIDPvg6uqKI2xXr2" crossorigin="anonymous">',
+    unsafe_allow_html=True,
+)
+query_params = st.experimental_get_query_params()
+tabs = ["Dashboard", "Regression", "Univariate Forecasting", "Multivariate Forecasting"]
+if "tab" in query_params:
+    active_tab = query_params["tab"][0]
+else:
+    active_tab = "Dashboard"
+
+if active_tab not in tabs:
+    st.experimental_set_query_params(tab="Dashboard")
+    active_tab = "Dashboard"
+
+li_items = "".join(
+    f"""
+    <li class="nav-item">
+        <a class="nav-link{' active' if t==active_tab else ''}" href="/?tab={t}">{t}</a>
+    </li>
+    """
+    for t in tabs
+)
+tabs_html = f"""
+    <ul class="nav nav-tabs">
+    {li_items}
+    </ul>
+"""
+
+st.markdown(tabs_html, unsafe_allow_html=True)
+st.markdown("<br>", unsafe_allow_html=True)
+#root_path="/content/drive/MyDrive/Technical/Learnings/Data Science/Capstone/Final Capstone Project"
+root_path="./"
+def load_data():
+    demand_df = pd.read_csv(root_path+'/Input/Daily_Demand_Forecasting_Orders.csv', sep=';')
+    df=pd.DataFrame(demand_df['Target (Total orders)'], index=demand_df.index)
+    return df, demand_df;
+
+def add_day_name(day_num):
+    day_names=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
+    return day_names[day_num-1]
+
+def plot_graph(dataset):
+    
+    demand_df=dataset.copy()
+    demand_df['Day_Name']=demand_df['Day of the week (Monday to Friday)'].apply(lambda x: add_day_name(x))
+    cat_day_of_week = CategoricalDtype(['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'], ordered=True)
+    
+    demand_df_day_total_sum=demand_df.groupby('Day_Name')['Target (Total orders)'].sum().reset_index()
+    demand_df_day_total_sum['Day_Name'] = demand_df_day_total_sum['Day_Name'].astype(cat_day_of_week)
+    demand_df_day_total_sum=demand_df_day_total_sum.sort_values(['Day_Name'])
+    fig, (ax1,ax2) = plt.subplots(1, 2, figsize=(15,5))
+    sns.barplot(demand_df_day_total_sum['Day_Name'], demand_df_day_total_sum['Target (Total orders)'], label='Target Orders', ax=ax1)
+    ax1.set_xlabel("Weekday")
+    ax1.set_ylabel("Count of order")
+    ax1.set_title("Target orders on weekdays")
+    
+    demand_df_week_total_sum=demand_df.groupby('Week of the month (first week, second, third, fourth or fifth week')['Target (Total orders)'].sum().reset_index()
+    sns.barplot(demand_df_week_total_sum['Week of the month (first week, second, third, fourth or fifth week'], demand_df_week_total_sum['Target (Total orders)'], ax=ax2)
+    ax2.set_xlabel("Week of month")
+    ax2.set_ylabel("Count of order")
+    ax2.set_title("Target orders on weeks")
+    
+    st.pyplot(fig)  
+
+def user_input_data(active_tab, df):
+    
+    if active_tab == 'Univariate Forecasting':
+        prediction_days=st.number_input('No of days to predict',min_value=3,max_value=15)
+        extra_dates = [df.index[-1] + d for d in range (1,prediction_days+1)]
+        forecast_df = pd.DataFrame(index=extra_dates)
+        option = st.selectbox('Which forecasting model would you like to be applied?', ('SARIMA', 'HWES'))
+        return forecast_df, option
+    elif active_tab == 'Multivariate Forecasting': 
+        prediction_days=st.number_input('No of days to predict',min_value=3,max_value=15)
+        extra_dates = [df.index[-1] + d for d in range (1,prediction_days+1)]
+        forecast_df = pd.DataFrame(index=extra_dates)
+        option = st.selectbox('Which forecasting model would you like to be applied?', ('VARMAX','Facebook Prophet'))
+        return forecast_df, option
+    elif active_tab == 'Regression':
+        Weekofthemonth=st.number_input('Week of the month',min_value=1,max_value=5, value=5)
+        Dayoftheweek=st.number_input('Day of the week',min_value=1,max_value=6, value=6)
+        Nonurgentorder=st.number_input('Non-urgent order', value=192.116)
+        Urgentorder=st.number_input('Urgent order', value=121.106)
+        OrdertypeA=st.number_input('Order type A', value=107.568)
+        OrdertypeB=st.number_input('Order type B', value=121.152)
+        OrdertypeC=st.number_input('Order type C', value=103.180)
+        Fiscalsectororders=st.number_input('Fiscal sector orders', value=18.678)
+        trafficcontrollerorders=st.number_input('Orders from the traffic controller sector', value=27328)
+        Bankingorders1=st.number_input('Banking orders (1)', value=108072)
+        Bankingorders2=st.number_input('Banking orders (2)', value=56015)
+        Bankingorders3=st.number_input('Banking orders (3)', value=10690)
+        Actual_value=st.number_input('Actual Value', value=331.900)
+        data={'Week of the month':Weekofthemonth,
+                'Day of the week':Dayoftheweek,
+                'Non-urgent order':Nonurgentorder,
+                'Urgent order':Urgentorder,
+                'Order type A' :OrdertypeA,
+                'Order type B' :OrdertypeB,
+                'Order type C' :OrdertypeC,
+                'Fiscal sector orders' :Fiscalsectororders,
+                'Orders from the traffic controller sector' :trafficcontrollerorders,
+                'Banking orders (1)' :Bankingorders1,
+                'Banking orders (2)' :Bankingorders2,
+                'Banking orders (3)' :Bankingorders3
+        
+        }
+        
+        features=pd.DataFrame(data,index=[0])
+        return Actual_value, features
+
+
+def load_model(active_tab, model_option, dataset, print_model_selection=True):
+    if active_tab == 'Univariate Forecasting':
+        if model_option == 'SARIMA':
+            st.write("You selected SARIMA model for prediction")
+            return joblib.load(root_path+"/Saved Models/timeseries_uni.h5")
+        else:    
+            st.write("You selected HWES (Hot Winter Exp Smoothing) model for prediction")
+            return joblib.load(root_path+"/Saved Models/timeseries_hotwinter_uni.h5")
+    elif active_tab == 'Multivariate Forecasting':
+        if model_option == 'VARMAX':
+            df = dataset.copy()
+            df.drop(columns=['Week of the month (first week, second, third, fourth or fifth week','Day of the week (Monday to Friday)','Fiscal sector orders','Orders from the traffic controller sector','Order type A','Order type B','Order type C'], inplace=True)
+            train_percentage=80
+            train_final_index=round(len(df)*(train_percentage/100))
+            train_data, test_data = df[0:train_final_index], df[train_final_index:]
+            #st.write(train_data)
+            model = VARMAX(endog=train_data, enforce_stationarity=False, enforce_invertibility=False, order=(1,0))
+            results = model.fit(disp=False)
+            if print_model_selection:
+                st.write("You selected VARMAX model for prediction. Removed 'Day of the week (Monday to Friday)','Fiscal sector orders','Orders from the traffic controller sector','Order type A','Order type B','Order type C' independent variables as per grangercausalitytests")
+            return results
+        else:
+            st.write("Model Demo under development")
+
+
+def evaluate_model_univ(model, forecast_df, dataset):
+    forecast_df['Target (Total orders)'] = model.predict(start=forecast_df.index[0], end=forecast_df.index[-1])
+    st.write('Forecasted output')
+    st.write(np.exp(forecast_df))
+    fig, ax = plt.subplots(figsize=(15,4))
+    ax.plot(dataset.index, dataset['Target (Total orders)'], label='Dataset')
+    ax.plot(forecast_df.index, np.exp(forecast_df), label='Forecast Data')
+    ax.legend(loc='best', fontsize='medium')
+    st.pyplot(fig) 
+
+def evaluate_model_multi(model, forecast_df, full_dataset, plot_graph=True):
+    forecast_df = model.predict(start=forecast_df.index[0], end=forecast_df.index[-1])
+    st.write('Forecasted output')
+    st.write(forecast_df)
+    if plot_graph:
+        fig, ax = plt.subplots(figsize=(15,4))
+        ax.plot(full_dataset.index, full_dataset['Target (Total orders)'], label='Dataset')
+        ax.plot(forecast_df.index, forecast_df['Target (Total orders)'], color='black', label='Forecast Data')
+        ax.legend(loc='best', fontsize='xx-large')
+        st.pyplot(fig)     
+
+def evaluate_model_reg(input_data, full_dataset, Actual_value):
+    df_ml=full_dataset.copy()
+    cont_col=['Non-urgent order','Urgent order','Order type A','Order type B','Order type C','Fiscal sector orders','Orders from the traffic controller sector','Banking orders (1)','Banking orders (2)','Banking orders (3)']
+    scaler = MinMaxScaler()
+    
+    df_ml[cont_col] = scaler.fit_transform(df_ml[cont_col])
+    input_data_reg=input_data.copy()
+    input_data_reg[cont_col]=scaler.transform(input_data_reg[cont_col])
+    linear_reg=joblib.load(root_path + "/Saved Models/linear_reg.h5")
+    linear_value=linear_reg.predict(input_data_reg[cont_col])[0][0]
+    lasso_reg=joblib.load(root_path + "/Saved Models/lasso_reg.h5")
+    lasso_reg_value=lasso_reg.predict(input_data_reg[cont_col])[0]
+    ridge_reg=joblib.load(root_path + "/Saved Models/ridge_reg.h5")
+    ridge_reg_value=ridge_reg.predict(input_data_reg[cont_col])[0][0]
+    svr_reg=joblib.load(root_path + "/Saved Models/svr_reg.h5")
+    svr_value=svr_reg.predict(input_data_reg[cont_col])[0]
+    svrRbf_reg=joblib.load(root_path + "/Saved Models/svrRbf_reg.h5")
+    svrRbf_reg_value=svrRbf_reg.predict(input_data_reg[cont_col])[0]
+    dtree_reg=joblib.load(root_path + "/Saved Models/dtree_reg.h5")
+    dtree_reg_value=dtree_reg.predict(input_data_reg[cont_col])[0]
+    rF_reg=joblib.load(root_path + "/Saved Models/rF_reg.h5")
+    rF_reg_value=rF_reg.predict(input_data_reg[cont_col])[0]
+    vt_reg=joblib.load(root_path + "/Saved Models/vt_reg.h5")
+    vt_reg_value=vt_reg.predict(input_data_reg[cont_col])[0]
+
+    n_train=48
+    input_data_dnn=input_data.copy()
+    X = full_dataset.iloc[:,[0,1,2,3,4,5,6,7,8,9,10,11]].values
+    trainX, testX = X[:n_train, :], X[n_train:, :]
+    scaler = MinMaxScaler()
+    trainX= scaler.fit_transform(trainX)
+    df_new= scaler.transform(input_data_dnn)
+    mlp_model = joblib.load(root_path + "/Saved Models/mlp_regressor_grid_search_best_model.h5")
+    y_mlp_predx=mlp_model.predict(df_new)[0]
+    keras_loaded_model_keras=keras.models.load_model(root_path + "/Saved Models/mlp_keras_best_model.h5")
+    keras_pred = keras_loaded_model_keras.predict(df_new)[0][0]
+    #st.write('Actual Value - '+ str(Actual_value))
+    data = [
+            ['Linear Regression', linear_value, Actual_value-linear_value], 
+            ['Lasso Regression', lasso_reg_value, Actual_value-lasso_reg_value], 
+            ['Ridge Regression', ridge_reg_value, Actual_value-ridge_reg_value], 
+            ['Linear SVR', svr_value, Actual_value-svr_value],
+            ['SVR RBF', svrRbf_reg_value, Actual_value-svrRbf_reg_value],
+            ['Decision Tree', dtree_reg_value, Actual_value-dtree_reg_value],
+            ['Random Forest', rF_reg_value, Actual_value-rF_reg_value],
+            ['Voting Regressor (Linear, Lasso, SVR, SVR RBF)', vt_reg_value, Actual_value-vt_reg_value],
+            ['MLP', y_mlp_predx, Actual_value-y_mlp_predx],
+            ['DNN Keras', keras_pred, Actual_value-keras_pred]
+
+    ]
+    #st.write(data)
+    st.write(pd.DataFrame(data, columns = ['Model', 'Predicted Value', 'Error']))
+
+    data={'feature_names':df_ml[cont_col].columns,'feature_importance':rF_reg.feature_importances_}
+    fi_df = pd.DataFrame(data)
+    fi_df.sort_values(by=['feature_importance'], ascending=False,inplace=True)
+    fig, ax = plt.subplots(figsize=(15,4))
+    sns.barplot(x=fi_df['feature_names'], y=fi_df['feature_importance'], ax=ax)
+    ax.set_xticklabels(fi_df['feature_names'], Rotation=90, )
+    st.pyplot(fig) 
+    
+dataset, full_dataset=load_data();
+if active_tab == "Dashboard":
+    prediction_days=7
+    st.write('Forecasted Order for next ' + str(prediction_days) + ' days')
+    extra_dates = [dataset.index[-1] + d for d in range (1,prediction_days+1)]
+    forecast_df = pd.DataFrame(index=extra_dates)
+    model=load_model("Multivariate Forecasting", 'VARMAX', full_dataset, False)
+    evaluate_model_multi(model, forecast_df, full_dataset, False)
+    st.write('EDA Findings - ')
+    plot_graph(full_dataset)
+elif active_tab == "Multivariate Forecasting":
+    forecast_df, model_option=user_input_data(active_tab, dataset)
+    model=load_model(active_tab, model_option, full_dataset)
+    evaluate_model_multi(model, forecast_df, full_dataset)
+elif active_tab == "Univariate Forecasting":
+    forecast_df, model_option=user_input_data(active_tab, dataset)
+    model=load_model(active_tab, model_option, dataset)
+    evaluate_model_univ(model, forecast_df, dataset)
+elif active_tab == "Regression":
+    Actual_value, input_data=user_input_data(active_tab, dataset)
+    evaluate_model_reg(input_data, full_dataset, Actual_value)
+else:
+    st.error("Something has gone terribly wrong.")
