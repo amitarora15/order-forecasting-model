@@ -30,8 +30,8 @@ from statsmodels.tsa.statespace.sarimax import SARIMAX
 from statsmodels.tsa.statespace.varmax import VARMAX, VARMAXResults
 import statsmodels.api as sm  ## sm.stats.acorr_ljungbox check autocorrection in series.   #sm.tsa.ARMA -- model
 
-root_path="/content/drive/MyDrive/Technical/Learnings/Data Science/Capstone/Final Capstone Project"
-#root_path="./"
+#root_path="/content/drive/MyDrive/Technical/Learnings/Data Science/Capstone/Final Capstone Project"
+root_path="./"
 
 
 st.set_page_config(layout="centered", page_title='Order Logistics', page_icon="(:shark)")
