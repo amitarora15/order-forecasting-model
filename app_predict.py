@@ -4,6 +4,7 @@ warnings.filterwarnings("ignore")
 
 import os
 import datetime
+import time
 
 import numpy as np
 import pandas as pd
@@ -29,8 +30,8 @@ from statsmodels.tsa.statespace.sarimax import SARIMAX
 from statsmodels.tsa.statespace.varmax import VARMAX, VARMAXResults
 import statsmodels.api as sm  ## sm.stats.acorr_ljungbox check autocorrection in series.   #sm.tsa.ARMA -- model
 
-#root_path="/content/drive/MyDrive/Technical/Learnings/Data Science/Capstone/Final Capstone Project"
-root_path="./"
+root_path="/content/drive/MyDrive/Technical/Learnings/Data Science/Capstone/Final Capstone Project"
+#root_path="./"
 
 
 st.set_page_config(layout="centered", page_title='Order Logistics', page_icon="(:shark)")
@@ -135,7 +136,7 @@ def load_model(active_tab, model_option, dataset, print_model_selection=True):
             st.info("You selected SARIMA model for prediction")
             return joblib.load(root_path+"/Saved Models/timeseries_uni.h5")
         else:    
-            st.info("You selected HWES (Hot Winter Exp Smoothing) model for prediction")
+            st.info("You selected HWES (Holt-Winters Exp Smoothing) model for prediction")
             return joblib.load(root_path+"/Saved Models/timeseries_hotwinter_uni.h5")
     elif active_tab == 'Multivariate Forecasting with Regression':
         if model_option == 'VARMAX':
@@ -282,18 +283,25 @@ if selected_tab == "Dashboard":
 elif selected_tab == "Multivariate Forecasting with Regression":
     st.header("Multivariate Forecasting with Regression")
     forecast_df, model_option=user_input_data(selected_tab, dataset)
-    model=load_model(selected_tab, model_option, full_dataset)
-    forecast_df = evaluate_model_multi(model, forecast_df, full_dataset)
-    compare_with_regression(full_dataset, forecast_df)
+    label_name='Evaluate '+ model_option + ' !!'
+    submit = st.button(label=label_name, key='Evaluate Multivariate Forecasting!!', help="Evaluate Multivariate Forecasting with Regerssion")
+    if submit and model_option !='Facebook Prophet':
+        model=load_model(selected_tab, model_option, full_dataset)
+        forecast_df = evaluate_model_multi(model, forecast_df, full_dataset)
+        compare_with_regression(full_dataset, forecast_df)
 elif selected_tab == "Univariate Forecasting":
     st.header("Univariate Forecasting")
     forecast_df, model_option=user_input_data(selected_tab, dataset)
-    model=load_model(selected_tab, model_option, dataset)
-    evaluate_model_univ(model, forecast_df, dataset)
+    label_name='Evaluate '+ model_option + ' !!'
+    submit = st.button(label=label_name, key='Evaluate Forecasting!!', help="Evaluate Univariate Forecasting")
+    if submit:
+        model=load_model(selected_tab, model_option, dataset)
+        evaluate_model_univ(model, forecast_df, dataset)
 elif selected_tab == "Regression":
     st.header("Regression")
     Actual_value, input_data=user_input_data(selected_tab, dataset)
-    evaluate_model_reg(input_data, full_dataset, Actual_value)
+    submit = st.button(label='Evaluate!!', key='Evaluate Regression!!', help="Evaluate Regression Model")
+    if submit:
+        evaluate_model_reg(input_data, full_dataset, Actual_value)
 else:
     st.error("Something has gone terribly wrong.")
-
