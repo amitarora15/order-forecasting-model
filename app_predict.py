@@ -196,8 +196,9 @@ def compare_with_regression(full_dataset, forecast_df):
     scaled_X_forecast=scaler.transform(X_forecast)
     y_pred_forecast = lasso_reg.predict(scaled_X_forecast)
     y_forecast['Reg Predicted Order'] = y_pred_forecast.tolist()
+    st.subheader("Multivariate Forecasted orders and Predicted orders uing Regression")
     st.table(y_forecast)
-    st.text('RMSE forecast and prediction:' + str(np.sqrt(mean_squared_error(y_forecast['Forecasted Target Order'], y_forecast['Reg Predicted Order']))))
+    st.info('RMSE forecast and prediction:' + str(np.sqrt(mean_squared_error(y_forecast['Forecasted Target Order'], y_forecast['Reg Predicted Order']))))
     fig, ax = plt.subplots(figsize=(15,6))
     y_forecast.plot(ax=ax)
     st.pyplot(fig)
@@ -216,8 +217,11 @@ def evaluate_model_reg(input_data, full_dataset, Actual_value):
     lasso_reg_value=lasso_reg.predict(input_data_reg[cont_col])[0]
     ridge_reg=joblib.load(root_path + "/Saved Models/ridge_reg.h5")
     ridge_reg_value=ridge_reg.predict(input_data_reg[cont_col])[0][0]
+    st.write('Before svr')
     svr_reg=joblib.load(root_path + "/Saved Models/svr_reg.h5")
+    st.write('Before svr load')
     svr_value=svr_reg.predict(input_data_reg[cont_col])[0]
+    st.write('Before svr predict')
     svrRbf_reg=joblib.load(root_path + "/Saved Models/svrRbf_reg.h5")
     svrRbf_reg_value=svrRbf_reg.predict(input_data_reg[cont_col])[0]
     dtree_reg=joblib.load(root_path + "/Saved Models/dtree_reg.h5")
@@ -255,6 +259,7 @@ def evaluate_model_reg(input_data, full_dataset, Actual_value):
     #st.write(data)
     st.table(pd.DataFrame(data, columns = ['Model', 'Predicted Value', 'Error']))
 
+    st.subheader("Feature Importance")
     data={'feature_names':df_ml[cont_col].columns,'feature_importance':rF_reg.feature_importances_}
     fi_df = pd.DataFrame(data)
     fi_df.sort_values(by=['feature_importance'], ascending=False,inplace=True)
