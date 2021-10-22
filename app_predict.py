@@ -17,7 +17,9 @@ import joblib
 
 from sklearn.model_selection import train_test_split, learning_curve
 from sklearn import metrics
+from sklearn.metrics import mean_squared_error
 from sklearn.preprocessing import StandardScaler, OneHotEncoder, MinMaxScaler, LabelEncoder
+from sklearn.linear_model import Lasso
 
 import tensorflow as tf                                                                   # importing tensorflow library
 from tensorflow import keras 
@@ -27,46 +29,27 @@ from statsmodels.tsa.statespace.sarimax import SARIMAX
 from statsmodels.tsa.statespace.varmax import VARMAX, VARMAXResults
 import statsmodels.api as sm  ## sm.stats.acorr_ljungbox check autocorrection in series.   #sm.tsa.ARMA -- model
 
-st.set_page_config(layout="wide")
-st.write("""
-    # Supply Chain Target Prediction
-    The app predict Target order based on Brazilian logistic dataset
-    ## **CDS Team Group-12** 	""")
-
-#st.sidebar.header("User input parameter")
-st.markdown(
-    '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.5.3/dist/css/bootstrap.min.css" integrity="sha384-TX8t27EcRE3e/ihU7zmQxVncDAy5uIKz4rEkgIXeMed4M0jlfIDPvg6uqKI2xXr2" crossorigin="anonymous">',
-    unsafe_allow_html=True,
-)
-query_params = st.experimental_get_query_params()
-tabs = ["Dashboard", "Regression", "Univariate Forecasting", "Multivariate Forecasting"]
-if "tab" in query_params:
-    active_tab = query_params["tab"][0]
-else:
-    active_tab = "Dashboard"
-
-if active_tab not in tabs:
-    st.experimental_set_query_params(tab="Dashboard")
-    active_tab = "Dashboard"
-
-li_items = "".join(
-    f"""
-    <li class="nav-item">
-        <a class="nav-link{' active' if t==active_tab else ''}" href="/?tab={t}">{t}</a>
-    </li>
-    """
-    for t in tabs
-)
-tabs_html = f"""
-    <ul class="nav nav-tabs">
-    {li_items}
-    </ul>
-"""
-
-st.markdown(tabs_html, unsafe_allow_html=True)
-st.markdown("<br>", unsafe_allow_html=True)
 #root_path="/content/drive/MyDrive/Technical/Learnings/Data Science/Capstone/Final Capstone Project"
 root_path="./"
+
+
+st.set_page_config(layout="centered", page_title='Order Logistics', page_icon="(:shark)")
+st.title("Supply Chain Target Prediction")
+st.text("The app predict Target order based on Brazilian logistic dataset")
+
+
+st.sidebar.header("Navigation")
+tabs = ["Dashboard", "Regression", "Univariate Forecasting", "Multivariate Forecasting with Regression"]
+selected_tab=st.sidebar.radio('Navigation',tabs)
+
+st.sidebar.header("Contributors")
+st.sidebar.markdown("""
+    - Amit Arora 
+    - Shubham Singh 
+    - Sameer Lowlekar 
+    - Sheetal Mandar Kulkarni 
+    - Siddharth Chaturvedi""")
+
 def load_data():
     demand_df = pd.read_csv(root_path+'/Input/Daily_Demand_Forecasting_Orders.csv', sep=';')
     df=pd.DataFrame(demand_df['Target (Total orders)'], index=demand_df.index)
@@ -85,7 +68,7 @@ def plot_graph(dataset):
     demand_df_day_total_sum=demand_df.groupby('Day_Name')['Target (Total orders)'].sum().reset_index()
     demand_df_day_total_sum['Day_Name'] = demand_df_day_total_sum['Day_Name'].astype(cat_day_of_week)
     demand_df_day_total_sum=demand_df_day_total_sum.sort_values(['Day_Name'])
-    fig, (ax1,ax2) = plt.subplots(1, 2, figsize=(15,5))
+    fig, (ax1,ax2) = plt.subplots(1, 2, figsize=(15,6))
     sns.barplot(demand_df_day_total_sum['Day_Name'], demand_df_day_total_sum['Target (Total orders)'], label='Target Orders', ax=ax1)
     ax1.set_xlabel("Weekday")
     ax1.set_ylabel("Count of order")
@@ -107,7 +90,7 @@ def user_input_data(active_tab, df):
         forecast_df = pd.DataFrame(index=extra_dates)
         option = st.selectbox('Which forecasting model would you like to be applied?', ('SARIMA', 'HWES'))
         return forecast_df, option
-    elif active_tab == 'Multivariate Forecasting': 
+    elif active_tab == 'Multivariate Forecasting with Regression': 
         prediction_days=st.number_input('No of days to predict',min_value=3,max_value=15)
         extra_dates = [df.index[-1] + d for d in range (1,prediction_days+1)]
         forecast_df = pd.DataFrame(index=extra_dates)
@@ -149,12 +132,12 @@ def user_input_data(active_tab, df):
 def load_model(active_tab, model_option, dataset, print_model_selection=True):
     if active_tab == 'Univariate Forecasting':
         if model_option == 'SARIMA':
-            st.write("You selected SARIMA model for prediction")
+            st.info("You selected SARIMA model for prediction")
             return joblib.load(root_path+"/Saved Models/timeseries_uni.h5")
         else:    
-            st.write("You selected HWES (Hot Winter Exp Smoothing) model for prediction")
+            st.info("You selected HWES (Hot Winter Exp Smoothing) model for prediction")
             return joblib.load(root_path+"/Saved Models/timeseries_hotwinter_uni.h5")
-    elif active_tab == 'Multivariate Forecasting':
+    elif active_tab == 'Multivariate Forecasting with Regression':
         if model_option == 'VARMAX':
             df = dataset.copy()
             df.drop(columns=['Week of the month (first week, second, third, fourth or fifth week','Day of the week (Monday to Friday)','Fiscal sector orders','Orders from the traffic controller sector','Order type A','Order type B','Order type C'], inplace=True)
@@ -165,32 +148,59 @@ def load_model(active_tab, model_option, dataset, print_model_selection=True):
             model = VARMAX(endog=train_data, enforce_stationarity=False, enforce_invertibility=False, order=(1,0))
             results = model.fit(disp=False)
             if print_model_selection:
-                st.write("You selected VARMAX model for prediction. Removed 'Day of the week (Monday to Friday)','Fiscal sector orders','Orders from the traffic controller sector','Order type A','Order type B','Order type C' independent variables as per grangercausalitytests")
+                st.info("You selected VARMAX model for prediction.")
+                st.text("Removed 'Day of the week (Monday to Friday)','Fiscal sector orders','Orders from the traffic controller sector','Order type A','Order type B','Order type C' independent variables as per grangercausalitytests")
             return results
         else:
-            st.write("Model Demo under development")
+            st.info("Model Demo under deployment")
 
 
 def evaluate_model_univ(model, forecast_df, dataset):
     forecast_df['Target (Total orders)'] = model.predict(start=forecast_df.index[0], end=forecast_df.index[-1])
-    st.write('Forecasted output')
-    st.write(np.exp(forecast_df))
-    fig, ax = plt.subplots(figsize=(15,4))
+    st.subheader('Forecasted orders')
+    st.table(np.exp(forecast_df))
+    fig, ax = plt.subplots(figsize=(15,6))
     ax.plot(dataset.index, dataset['Target (Total orders)'], label='Dataset')
     ax.plot(forecast_df.index, np.exp(forecast_df), label='Forecast Data')
     ax.legend(loc='best', fontsize='medium')
     st.pyplot(fig) 
 
-def evaluate_model_multi(model, forecast_df, full_dataset, plot_graph=True):
+def evaluate_model_multi(model, forecast_df, full_dataset, is_not_dashboard=True):
     forecast_df = model.predict(start=forecast_df.index[0], end=forecast_df.index[-1])
-    st.write('Forecasted output')
-    st.write(forecast_df)
-    if plot_graph:
-        fig, ax = plt.subplots(figsize=(15,4))
+    if is_not_dashboard:
+        st.subheader('Forecasted orders')
+    st.table(forecast_df)
+    if is_not_dashboard:
+        fig, ax = plt.subplots(figsize=(15,6))
         ax.plot(full_dataset.index, full_dataset['Target (Total orders)'], label='Dataset')
         ax.plot(forecast_df.index, forecast_df['Target (Total orders)'], color='black', label='Forecast Data')
         ax.legend(loc='best', fontsize='xx-large')
-        st.pyplot(fig)     
+        st.pyplot(fig)
+    return forecast_df    
+
+def compare_with_regression(full_dataset, forecast_df):
+    df_reg=full_dataset.copy()
+    cont_col=['Non-urgent order','Urgent order','Banking orders (1)','Banking orders (2)','Banking orders (3)']
+    scaler = MinMaxScaler()
+    df_reg[cont_col] = scaler.fit_transform(df_reg[cont_col])
+    df_final = pd.DataFrame(df_reg[cont_col], index=full_dataset.index)
+    train_percentage=80
+    train_final_index=round(len(df_final)*(train_percentage/100))
+    X_train, X_test = df_final[0:train_final_index], df_final[train_final_index:]
+    y_train, y_test = full_dataset[['Target (Total orders)']][0:train_final_index], full_dataset[['Target (Total orders)']][train_final_index:]
+    lasso_reg = Lasso(alpha=2.5)
+    lasso_reg.fit(X_train, y_train)
+    X_forecast=forecast_df[['Non-urgent order','Urgent order','Banking orders (1)','Banking orders (2)','Banking orders (3)']]
+    y_forecast=forecast_df[['Target (Total orders)']]
+    y_forecast.rename(columns={'Target (Total orders)':'Forecasted Target Order'}, inplace=True)
+    scaled_X_forecast=scaler.transform(X_forecast)
+    y_pred_forecast = lasso_reg.predict(scaled_X_forecast)
+    y_forecast['Reg Predicted Order'] = y_pred_forecast.tolist()
+    st.table(y_forecast)
+    st.text('RMSE forecast and prediction:' + str(np.sqrt(mean_squared_error(y_forecast['Forecasted Target Order'], y_forecast['Reg Predicted Order']))))
+    fig, ax = plt.subplots(figsize=(15,6))
+    y_forecast.plot(ax=ax)
+    st.pyplot(fig)
 
 def evaluate_model_reg(input_data, full_dataset, Actual_value):
     df_ml=full_dataset.copy()
@@ -243,36 +253,39 @@ def evaluate_model_reg(input_data, full_dataset, Actual_value):
 
     ]
     #st.write(data)
-    st.write(pd.DataFrame(data, columns = ['Model', 'Predicted Value', 'Error']))
+    st.table(pd.DataFrame(data, columns = ['Model', 'Predicted Value', 'Error']))
 
     data={'feature_names':df_ml[cont_col].columns,'feature_importance':rF_reg.feature_importances_}
     fi_df = pd.DataFrame(data)
     fi_df.sort_values(by=['feature_importance'], ascending=False,inplace=True)
-    fig, ax = plt.subplots(figsize=(15,4))
+    fig, ax = plt.subplots(figsize=(15,6))
     sns.barplot(x=fi_df['feature_names'], y=fi_df['feature_importance'], ax=ax)
     ax.set_xticklabels(fi_df['feature_names'], Rotation=90, )
     st.pyplot(fig) 
     
 dataset, full_dataset=load_data();
-if active_tab == "Dashboard":
+if selected_tab == "Dashboard":
     prediction_days=7
-    st.write('Forecasted Order for next ' + str(prediction_days) + ' days')
+    st.subheader('Forecasted Orders for next ' + str(prediction_days) + ' days')
     extra_dates = [dataset.index[-1] + d for d in range (1,prediction_days+1)]
     forecast_df = pd.DataFrame(index=extra_dates)
-    model=load_model("Multivariate Forecasting", 'VARMAX', full_dataset, False)
+    model=load_model("Multivariate Forecasting with Regression", 'VARMAX', full_dataset, False)
     evaluate_model_multi(model, forecast_df, full_dataset, False)
-    st.write('EDA Findings - ')
+    st.subheader('EDA Findings')
     plot_graph(full_dataset)
-elif active_tab == "Multivariate Forecasting":
-    forecast_df, model_option=user_input_data(active_tab, dataset)
-    model=load_model(active_tab, model_option, full_dataset)
-    evaluate_model_multi(model, forecast_df, full_dataset)
-elif active_tab == "Univariate Forecasting":
-    forecast_df, model_option=user_input_data(active_tab, dataset)
-    model=load_model(active_tab, model_option, dataset)
+    st.balloons()
+elif selected_tab == "Multivariate Forecasting with Regression":
+    forecast_df, model_option=user_input_data(selected_tab, dataset)
+    model=load_model(selected_tab, model_option, full_dataset)
+    forecast_df = evaluate_model_multi(model, forecast_df, full_dataset)
+    compare_with_regression(full_dataset, forecast_df)
+elif selected_tab == "Univariate Forecasting":
+    forecast_df, model_option=user_input_data(selected_tab, dataset)
+    model=load_model(selected_tab, model_option, dataset)
     evaluate_model_univ(model, forecast_df, dataset)
-elif active_tab == "Regression":
-    Actual_value, input_data=user_input_data(active_tab, dataset)
+elif selected_tab == "Regression":
+    Actual_value, input_data=user_input_data(selected_tab, dataset)
     evaluate_model_reg(input_data, full_dataset, Actual_value)
 else:
     st.error("Something has gone terribly wrong.")
+
