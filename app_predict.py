@@ -275,15 +275,18 @@ if selected_tab == "Dashboard":
     plot_graph(full_dataset)
     st.balloons()
 elif selected_tab == "Multivariate Forecasting with Regression":
+    st.header("Multivariate Forecasting with Regression")
     forecast_df, model_option=user_input_data(selected_tab, dataset)
     model=load_model(selected_tab, model_option, full_dataset)
     forecast_df = evaluate_model_multi(model, forecast_df, full_dataset)
     compare_with_regression(full_dataset, forecast_df)
 elif selected_tab == "Univariate Forecasting":
+    st.header("Univariate Forecasting")
     forecast_df, model_option=user_input_data(selected_tab, dataset)
     model=load_model(selected_tab, model_option, dataset)
     evaluate_model_univ(model, forecast_df, dataset)
 elif selected_tab == "Regression":
+    st.header("Regression")
     Actual_value, input_data=user_input_data(selected_tab, dataset)
     evaluate_model_reg(input_data, full_dataset, Actual_value)
 else:
