@@ -217,11 +217,11 @@ def evaluate_model_reg(input_data, full_dataset, Actual_value):
     lasso_reg_value=lasso_reg.predict(input_data_reg[cont_col])[0]
     ridge_reg=joblib.load(root_path + "/Saved Models/ridge_reg.h5")
     ridge_reg_value=ridge_reg.predict(input_data_reg[cont_col])[0][0]
-    st.write('Before svr')
+    #st.write('Before svr')
     svr_reg=joblib.load(root_path + "/Saved Models/svr_reg.h5")
-    st.write('Before svr load')
+    #st.write('Before svr load')
     svr_value=svr_reg.predict(input_data_reg[cont_col])[0]
-    st.write('Before svr predict')
+    #st.write('Before svr predict')
     svrRbf_reg=joblib.load(root_path + "/Saved Models/svrRbf_reg.h5")
     svrRbf_reg_value=svrRbf_reg.predict(input_data_reg[cont_col])[0]
     dtree_reg=joblib.load(root_path + "/Saved Models/dtree_reg.h5")
